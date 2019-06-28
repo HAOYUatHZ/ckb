@@ -5,10 +5,11 @@ use ckb_network::CKBProtocolContext;
 use ckb_protocol::{cast, BlockProposal, FlatbuffersVectorIterator};
 use ckb_store::ChainStore;
 use failure::Error as FailureError;
-use futures::{self, future::FutureResult, lazy};
+use futures::future::{lazy, poll_fn};
 use numext_fixed_hash::H256;
 use std::convert::TryInto;
 use std::sync::Arc;
+use tokio_threadpool::blocking;
 
 pub struct BlockProposalProcess<'a, CS> {
     message: &'a BlockProposal<'a>,
@@ -63,20 +64,23 @@ impl<'a, CS: ChainStore + 'static> BlockProposalProcess<'a, CS> {
             }
         }
 
-        if let Err(err) = self.nc.future_task({
-            let tx_pool_executor = Arc::clone(&self.relayer.tx_pool_executor);
-            Box::new(lazy(move || -> FutureResult<(), ()> {
-                let ret = tx_pool_executor.verify_and_add_txs_to_pool(asked_txs);
-                if ret.is_err() {
-                    warn_target!(
-                        crate::LOG_TARGET_RELAY,
-                        "BlockProposal add_tx_to_pool error {:?}",
-                        ret
-                    )
-                }
-                futures::future::ok(())
-            }))
-        }) {
+        let tx_pool_executor = Arc::clone(&self.relayer.tx_pool_executor);
+        let bf = blocking(move || {
+            let ret = tx_pool_executor.verify_and_add_txs_to_pool(asked_txs);
+            if ret.is_err() {
+                warn_target!(
+                    crate::LOG_TARGET_RELAY,
+                    "BlockProposal add_tx_to_pool error {:?}",
+                    ret
+                )
+            }
+        })
+        .map_err(|_| ());
+
+        if let Err(err) = self
+            .nc
+            .future_task(Box::new(lazy(move || poll_fn(move || bf))))
+        {
             debug_target!(
                 crate::LOG_TARGET_RELAY,
                 "relayer send future task error: {:?}",
