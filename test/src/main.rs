@@ -78,6 +78,10 @@ fn main() {
         "compact_block_relay_parent_of_orphan_block",
         Box::new(CompactBlockRelayParentOfOrphanBlock),
     );
+    specs.insert(
+        "compact_block_relay_pending_sync_block",
+        Box::new(CompactBlockRelayPendingSyncBlock),
+    );
     specs.insert("invalid_locator_size", Box::new(InvalidLocatorSize));
     specs.insert("tx_pool_size_limit", Box::new(SizeLimit));
     specs.insert("tx_pool_cycles_limit", Box::new(CyclesLimit));

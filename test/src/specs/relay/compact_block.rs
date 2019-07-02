@@ -368,3 +368,38 @@ impl Spec for CompactBlockRelayParentOfOrphanBlock {
         vec![TestProtocol::sync(), TestProtocol::relay()]
     }
 }
+
+pub struct CompactBlockRelayPendingSyncBlock;
+
+impl Spec for CompactBlockRelayPendingSyncBlock {
+    // Case:
+    // 1. NodeA block number is H, NodeB block number is H+1
+    // 2. NodeA send `GetHeaders` message to NodeB, NodeB responses H+1 via `Headers` message
+    // 3. NodeA send `GetBlocks` message to NodeB, NodeB delay the response message
+    // 4. NodeB (or other nodes) send H+1 via `CompactBlock` message to NodeA
+    // 5. NodeA should accept this block and update tip to H+1
+    fn run(&self, net: Net) {
+        let node = &net.nodes[0];
+        node.generate_blocks(5);
+        net.connect(node);
+        let (peer_id, _, _) = net.receive();
+
+        let new_block = node.new_block_builder(None, None, None).build();
+        net.send(
+            NetworkProtocol::SYNC.into(),
+            peer_id,
+            build_header(new_block.header()),
+        );
+        clear_messages(&net);
+        net.send(
+            NetworkProtocol::RELAY.into(),
+            peer_id,
+            build_compact_block(&new_block),
+        );
+        net.waiting_for_sync(6);
+    }
+
+    fn test_protocols(&self) -> Vec<TestProtocol> {
+        vec![TestProtocol::sync(), TestProtocol::relay()]
+    }
+}
