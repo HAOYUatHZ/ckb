@@ -178,6 +178,10 @@ impl Net {
     pub fn receive_timeout(&self, timeout: Duration) -> Result<NetMessage, RecvTimeoutError> {
         self.controller.as_ref().unwrap().1.recv_timeout(timeout)
     }
+
+    pub fn create_new_dummy_net(&self) -> Net {
+        Net::new("", self.nodes.len(), self.start_port + (self.nodes.len() as u16) * 2 + 1, self.test_protocols.clone())
+    }
 }
 
 pub struct DummyProtocolHandler {

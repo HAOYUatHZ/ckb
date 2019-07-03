@@ -376,27 +376,35 @@ impl Spec for CompactBlockRelayPendingSyncBlock {
     // 1. NodeA block number is H, NodeB block number is H+1
     // 2. NodeA send `GetHeaders` message to NodeB, NodeB responses H+1 via `Headers` message
     // 3. NodeA send `GetBlocks` message to NodeB, NodeB delay the response message
-    // 4. NodeB (or other nodes) send H+1 via `CompactBlock` message to NodeA
+    // 4. Other node send H+1 via `CompactBlock` message to NodeA
     // 5. NodeA should accept this block and update tip to H+1
     fn run(&self, net: Net) {
         let node = &net.nodes[0];
-        node.generate_blocks(5);
+        // exit IBD mode
+        node.generate_block();
         net.connect(node);
         let (peer_id, _, _) = net.receive();
-
         let new_block = node.new_block_builder(None, None, None).build();
+
         net.send(
             NetworkProtocol::SYNC.into(),
             peer_id,
             build_header(new_block.header()),
         );
+        // delay the response message of `GetBlocks`
         clear_messages(&net);
-        net.send(
+
+        let new_net = net.create_new_dummy_net();
+        new_net.connect(node);
+        let (peer_id, _, _) = new_net.receive();
+        new_net.send(
             NetworkProtocol::RELAY.into(),
             peer_id,
             build_compact_block(&new_block),
         );
-        net.waiting_for_sync(6);
+
+        let ret = wait_until(10, move || node.get_tip_block() == new_block);
+        assert!(ret, "Node should accept compact block");
     }
 
     fn test_protocols(&self) -> Vec<TestProtocol> {
